@@ -21,9 +21,6 @@
  *   when it is not necessary. Only signal that needs to be connected for that
  *   is property notify for that is "can-bind" 
  *
- * - Contract self toggle to create predictable disconnection. While it already
- *   works, adding toggle_ref will just make it handle things in more proper way
- *
  * What is handled?
  *
  * Beside the obvious as having single place to rebind same widgets to new
@@ -786,6 +783,8 @@ namespace Gtk.Fx
 
 	public class ContractedBindingPointer : Object, IBindingPointer
 	{
+		private bool finalizing_in_progress = false;
+		
 		private WeakReference<Object?> _data = new WeakReference<Object?> (null);
 		public Object? data { 
 			get { return (_data.target); }
@@ -852,16 +851,26 @@ namespace Gtk.Fx
 				data.remove_toggle_ref (handle_toggle_ref);
 		}
 
+		private void handle_self_toggle_ref (Object obj, bool is_last)
+		{
+			finalizing_in_progress = true;
+			data = null;
+			remove_toggle_ref (handle_self_toggle_ref);
+		}
+
 		public ContractedBindingPointer (BindingContract contract, Object? data, BindingReferenceType? reference_type = null)
 		{
 			_reference_type = reference_type;
 			_contract = new WeakReference<BindingContract> (contract);
 			this.data = data;
+			add_toggle_ref (handle_self_toggle_ref);
 		}
 	}
 
 	public class BindingContract : Object, IBindingPointer, IBindingSource
 	{
+		private bool finalizing_in_progress = false;
+
 		private bool toggle_set = false;
 		private GLib.Array<BindingInformation> _items = new GLib.Array<BindingInformation>();
 		private WeakReference<Object?> last_source = new WeakReference<Object?>(null);
@@ -908,15 +917,13 @@ namespace Gtk.Fx
 					disolve_contract (value == null);
 					disconnect_lifetime();
 				}
-				if (ref_count > 0)
-					before_source_change (this, is_same_type(value, data), value);
+				before_source_change (this, is_same_type(value, data), value);
 				_data = new WeakReference<Object?>(value); 
 				if (data != null) {
 					connect_lifetime();
 					bind_contract();
 				}
-				if (ref_count > 0)
-					source_changed(this);
+				source_changed(this);
 			}
 		}
 
@@ -1095,12 +1102,22 @@ namespace Gtk.Fx
 
 		public signal void contract_changed (BindingContract contract);
 
-		~BindingContract()
+		protected virtual void disconnect_contract()
 		{
+			finalizing_in_progress = true;
 			clean_state_objects();
 			clean_source_values();
 			unbind_all();
 			data = null;
+		}
+
+		private void handle_self_toggle_ref (Object obj, bool is_last)
+		{
+			if ((is_last == false) || (finalizing_in_progress == true))
+				return;
+			finalizing_in_progress = true;
+			disconnect_contract();
+			remove_toggle_ref (handle_self_toggle_ref);
 		}
 
 		public BindingContract.add_to_manager (BindingContractManager contract_manager, string name, Object? data = null, BindingReferenceType reference_type = BindingReferenceType.WEAK)
@@ -1123,6 +1140,7 @@ namespace Gtk.Fx
 				last_source = new WeakReference<Object?>(src.get_source());
 			});
 			this.data = data;
+			add_toggle_ref (handle_self_toggle_ref);
 			// no binding here yet, so nothing else is required
 		}
 	}
@@ -1160,6 +1178,7 @@ namespace Gtk.Fx
 
 	public class BindingContractManager : Object
 	{
+		private bool finalizing_in_progress = false;
 		private static BindingContractManager _default_contract_manager = null;
 
 		private GLib.Array<NamedContract> _contracts = new GLib.Array<NamedContract>();
@@ -1201,13 +1220,18 @@ namespace Gtk.Fx
 					_contracts.remove_index (i);
 		}
 
-		~BindingContractManager()
+		private void handle_self_toggle_ref (Object obj, bool is_last)
 		{
+			if ((is_last == false) || (finalizing_in_progress == true))
+				return;
+			finalizing_in_progress = true;
 			clean();
+			remove_toggle_ref (handle_self_toggle_ref);
 		}
 
 		public BindingContractManager()
 		{
+			add_toggle_ref (handle_self_toggle_ref);
 		}
 	}
 }
