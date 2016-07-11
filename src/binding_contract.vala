@@ -1159,14 +1159,14 @@ namespace Gtk.Fx
 			get { return (_contract); }
 		}
 
-		public void disconnect()
+		public void unref_contract()
 		{
 			_contract = null;
 		}
 
 		~NamedContract()
 		{
-			disconnect();
+			unref_contract();
 		}
 
 		public NamedContract (string name, BindingContract contract)
@@ -1193,7 +1193,7 @@ namespace Gtk.Fx
 		public void clean()
 		{
 			while (_contracts.length > 0) {
-				_contracts.data[0].disconnect();
+				_contracts.data[0].unref_contract();
 				_contracts.remove_index(0);
 			}
 		}
@@ -1215,9 +1215,12 @@ namespace Gtk.Fx
 
 		public void remove (string name)
 		{
-			for (int i=0; i<_contracts.length; i++)
-				if (_contracts.data[i].name == name)
+			for (int i=0; i<_contracts.length; i++) {
+				if (_contracts.data[i].name == name) {
+					_contracts.data[i].unref_contract();
 					_contracts.remove_index (i);
+				}
+			}
 		}
 
 		private void handle_self_toggle_ref (Object obj, bool is_last)
