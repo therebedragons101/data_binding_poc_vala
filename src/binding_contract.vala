@@ -9,13 +9,9 @@
  * - Better and more complex demo that touches functionality somewhat seriously
  *   as current one more or less only does basic features
  *
- * - BindingSubContract or BindingPointerRedirection. Both are already done, but
- *   I am in process of testing which is more suitable. Main purpose they serve
- *   is having predictable source which is specified as sub-property from source
- *   which allows real chaining of whole databinding pipeline as you can build
- *   binding tree and have it handled as such. The reason why it is not included
- *   yet is because I want it to be flexible and extensible beyond simple 
- *   sub-property 
+ * - Test for BindingPointerFromPropertyValue and manual updating (requires 
+ *   moving everything from GBinding to PropertyBinding as GBinding simply
+ *   cannot handle it
  * 
  * - Handling of activity and suspended in BindingInformation to avoid rebinding
  *   when it is not necessary. Only signal that needs to be connected for that
@@ -27,8 +23,53 @@
  * source object this also handles most corner case scenarios that show up once
  * you really dig into databinding application design
  *
+ * NOTE! You shoud run demo before coming to conclusions
+ *
+ * - PropertyBinding which is upgraded GBinding that allows missing features
+ *   in GBinding: FLOOD_DETECTION, MANUAL_UPDATE, REVERSE_DIRECTION and INACTIVE
+ *   This will now enable simple implementation of better BindingPointer
+ *   extensions. (Inclusion in BindingInformation is still on TODO list)
+ *
+ * - Binding flood detection (optional and disabled by default). When enabled it
+ *   can detect flood of data change per property so it doesn't spam GUI redraw
+ *   (Look at demo>Tutorial(Binding)>Basic binding for example of implementation
+ *   as well as code example). (Flood relay to contract example is still on 
+ *   TODO)
+ *
+ * - Manual binding update (optional and disabled by default). Does nothing but
+ *   disables default property notify binding and waits for update_from_source()
+ *   and update_from_parent() to be triggered. This enables custom refresh, but
+ *   more importantly it makes BindingPointer MANUAL_UPDATE really viable
+ *   (BindingPointer still needs to include this, TODO) (Look at 
+ *   demo>Tutorial(Binding)>Basic binding for example of implementation as well 
+ *   as code example)
+ *
+ * - Reverse direction support. While useless by it self in PropertyBinding,
+ *   this comes in play when taken from group view where you sometimes need 
+ *   different direction of data flow for certain binding and this just removes
+ *   need for extra contract that would be needed otherwise. It also controls
+ *   direction of SYNC_CREATE
+ *
+ * - INACTIVE provides access to current state of binding.
+ *
+ * - freeze()/unfreeze() where freeze(bool) can specify hard or soft unfreeze 
+ *   depending on what is more suitable. soft freeze just avoids processing
+ *   of notifications, while hard freeze disables signals temporarily until
+ *   unfreeze(). After unfreeze binding processes SYNC_CREATE again if 
+ *   specified
+ *
+ * -- end of PropertyBinding --
+ *
+ * - Binder class which is used to define PropertyBinding creation for different
+ *   purposes or just to enable debugging of data flow in easy way. (Binder is
+ *   still on TODO list as far as inclusion in contract goes)
+ *
  * - Binding pointers can specify how data they point to is handled. By default
  *   they are set to PROPERTY
+ *
+ * - BindingPointerFromPropertyValue handles one of pointer relay options. It
+ *   handles case where source needed is not actual object, but rather its
+ *   property which makes it available to create complex data maps
  *
  * - Group handling of bindings handled by locking. If specified binding 
  *   information already exists, it increments lock counter which makes it safe
