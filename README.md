@@ -8,10 +8,16 @@ makes it much faster to prototype the end case scenario.
 
 IMPLEMENTATION STAGES
 
-- Stage 1 (getting basic databaingding in order)
+- Stage 1 (getting basic databaingding in order) 95% done
 - Stage 2 (split files/move to library, so feedback on public api is possible)
 - Stage 3 (add advanced features)
 - Stage 4 (rewrite final product in C if I don't decide to stay in Vala )
+
+NOTE! at this stage i would strongly advise running demo and look trough its
+tutorial as this aproach takes very different and unique way.
+i will most pobably will just ignore people if i detect that they talk about
+something different and they lack understanding the basic direction of this 
+project
 
 TODO
 
