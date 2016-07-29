@@ -4,6 +4,7 @@ data_binding_poc_vala_SOURCES = \
 	config.vapi \
 	convenience_classes.vala \
 	binding_contract.vala \
+	property_binding.vala \
 	main.vala
 
 data_binding_poc_vala_CFLAGS = \

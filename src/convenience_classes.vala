@@ -221,12 +221,12 @@ namespace G
 
 	public class WeakReference<T> 
 	{
-		protected weak T _target;
-		public T target { 
+		protected weak T? _target;
+		public T? target { 
 			get { return (_target); }
 		}
 
-		public WeakReference (T set_to_target)
+		public WeakReference (T? set_to_target)
 		{
 			_target = set_to_target;
 		}
@@ -253,14 +253,15 @@ namespace G
 			}
 		}
 
-		public StrictWeakReference (T set_to_target, owned WeakReferenceInvalid? notify_method = null)
+		public StrictWeakReference (T? set_to_target, owned WeakReferenceInvalid? notify_method = null)
 		{
 			base (set_to_target);
 			_notify_method = (owned) notify_method;
 			if (_target is GLib.Object)
 				((Object) _target).weak_ref (handle_weak_ref); 
 			else
-				GLib.warning ("Cannot set weak_ref on non GLib.Object");
+				if (_target != null)
+					GLib.warning ("Cannot set weak_ref on non GLib.Object");
 		}
 
 	}

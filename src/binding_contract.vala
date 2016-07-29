@@ -1,248 +1,9 @@
 /*
- *
- * Databinding POC implementation in vala, later to be rewriten in C. Vala
- * is chosen for simple reason, I'm far more familiar with it and that
- * makes it much faster to prototype the end case scenario.
- *
- * TODO
- *
- * - Better and more complex demo that touches functionality somewhat seriously
- *   as current one more or less only does basic features
- *
- * - Test for BindingPointerFromPropertyValue and manual updating (requires 
- *   moving everything from GBinding to PropertyBinding as GBinding simply
- *   cannot handle it
- * 
- * - Handling of activity and suspended in BindingInformation to avoid rebinding
- *   when it is not necessary. Only signal that needs to be connected for that
- *   is property notify for that is "can-bind" 
- *
- * What is handled?
- *
- * Beside the obvious as having single place to rebind same widgets to new
- * source object this also handles most corner case scenarios that show up once
- * you really dig into databinding application design
- *
- * NOTE! You shoud run demo before coming to conclusions
- *
- * - PropertyBinding which is upgraded GBinding that allows missing features
- *   in GBinding: FLOOD_DETECTION, MANUAL_UPDATE, REVERSE_DIRECTION and INACTIVE
- *   This will now enable simple implementation of better BindingPointer
- *   extensions. (Inclusion in BindingInformation is still on TODO list)
- *
- * - Binding flood detection (optional and disabled by default). When enabled it
- *   can detect flood of data change per property so it doesn't spam GUI redraw
- *   (Look at demo>Tutorial(Binding)>Basic binding for example of implementation
- *   as well as code example). (Flood relay to contract example is still on 
- *   TODO)
- *
- * - Manual binding update (optional and disabled by default). Does nothing but
- *   disables default property notify binding and waits for update_from_source()
- *   and update_from_parent() to be triggered. This enables custom refresh, but
- *   more importantly it makes BindingPointer MANUAL_UPDATE really viable
- *   (BindingPointer still needs to include this, TODO) (Look at 
- *   demo>Tutorial(Binding)>Basic binding for example of implementation as well 
- *   as code example)
- *
- * - Reverse direction support. While useless by it self in PropertyBinding,
- *   this comes in play when taken from group view where you sometimes need 
- *   different direction of data flow for certain binding and this just removes
- *   need for extra contract that would be needed otherwise. It also controls
- *   direction of SYNC_CREATE
- *
- * - INACTIVE provides access to current state of binding.
- *
- * - freeze()/unfreeze() where freeze(bool) can specify hard or soft unfreeze 
- *   depending on what is more suitable. soft freeze just avoids processing
- *   of notifications, while hard freeze disables signals temporarily until
- *   unfreeze(). After unfreeze binding processes SYNC_CREATE again if 
- *   specified
- *
- * -- end of PropertyBinding --
- *
- * - Binder class which is used to define PropertyBinding creation for different
- *   purposes or just to enable debugging of data flow in easy way. (Binder is
- *   still on TODO list as far as inclusion in contract goes)
- *
- * - Binding pointers can specify how data they point to is handled. By default
- *   they are set to PROPERTY
- *
- * - BindingPointerFromPropertyValue handles one of pointer relay options. It
- *   handles case where source needed is not actual object, but rather its
- *   property which makes it available to create complex data maps
- *
- * - Group handling of bindings handled by locking. If specified binding 
- *   information already exists, it increments lock counter which makes it safe
- *   to have overlapping BindingInformationInterface between groups without
- *   worry
- *
- * - Control over who is keeping objects alive. BindingContract by default uses
- *   BindingReferenceType.WEAK which means that it is up to application to keep
- *   objects alive and in this case not single reference is installed. For
- *   cases where one needs to bind to weak objects BindingContract can be
- *   created with BindingReferenceType.STRONG which causes BindingContract to
- *   install hard reference on source object which keeps it alive until either
- *   contract is destroyed or contract changes its binding source
- *
- * - Temporary contract suspending where contract disbands all its bindings to
- *   widgets until suspending is out of effect
- *
- * - Source validation tracking with BindingContract.is_valid where each added
- *   binding can specify its own case for its value validity and then adjust
- *   BindingContract.is_valid to represent cumulative state of that source
- *   object so application only needs to bind to that. Note that validation is
- *   based on "per-property" specifications on contract, not global. There is
- *   a high possibility that is_valid requirements are not the same for all
- *   contracts that connect to same object with same conditions. Global check
- *   is simply not needed as it is much better to use custom state object for
- *   that purpose. Making it available on contract would just clutter API, while
- *   "per-property" also just makes sense when it is considered bindings can be
- *   added/removed on the fly and at the same time always keep perfect condition
- *
- *   Usage example:
- *   binding Apply button "sensitive" to contract for whole lifetime of window 
- *   no matter how source object changes. As such it is just normal to simply 
- *   use Object.bind_property without slightest care. 
- *
- * - Complete required notification mechanism for creation of "rebuild-per-case"
- *   scenario as when source changes first one being dispatched is 
- *   "before_source_change" which provides type equality of current and next
- *   source as well as reference for next source. This signal is followed by
- *   "source_changed" which means contract at this point already points to 
- *   new source object. The fact that application can be aware of next type
- *   makes it easy to either drop/rebuild or just leave the widgets and bindings
- *   without any unnecesary flickering or strain. Contract it self also provides
- *   "contract-changed" which is triggered when bindings are added/removed to
- *   the contract
- *
- *   Usage example:
- *   Property editor like functionality where whole contents and widgets get
- *   replaced by contents that are related to new source object. While rebuild
- *   per case needs similar interaction as without data binding (drop
- *   widgets/create widgets) case for this is simple. Application can take
- *   consistent approach no matter what and there are reliable notifications it
- *   can rely on  
- *
- * - Availability of chaining contracts as source object where object being
- *   bound to is not contract, but rather source object it points to or in
- *   case of multiple chaining... source of last link in the chain. This it
- *   self will come even more in play with BindingSubContract (WIP).
- *   BindingSubContract will serve as redirection to particular data inside
- *   source object and it allows application to design whole databinding 
- *   pipeline as predictable plan as well as makes it possible to integrate
- *   it in Glade or similar application that is designed to plan data binding
- *   pipeline across the application
- *
- * - Availability of using manager objects to handle/group contracts by name so
- *   application can avoid tracking references. This guarantees that contract
- *   will always have minimal reference count which will be dropped as soon
- *   as contract is removed
- *
- * - This said, Object.bind_property becomes really functional when application
- *   follows correct design path. Using contracts where data changes and using
- *   bind_property where it doesn't.
- *
- *   Usage example:
- *   If you bind_model to list_box data object will be fixed. In this case it
- *   is much more appropriate to use bind_property when creating widgets trough
- *   model as it will be much more efficient than applying contract for each
- *   item
- *
- * - Each contract has default_target as well as custom targets per binding.
- *   The distinction is in what job binding contract will entail. There are
- *   two kinds of bindings that contract can offer. One is binding with GUI,
- *   second is creating contract between two objects and multiple properties.
- *   In both cases source is the same, while target won't be. In case of GUI
- *   most probably there will be different widgets as target objects, while
- *   in object<>object contract, both will be kept the same. In second case
- *   it is much more beneficial if target can have same single point of handling
- *   as source does.
- * 
- *   This is why BindingContract offers bind(...) and bind_default(...).
- *   bind(...) offers specification of custom target per binding, while
- *   bind_default(...) always points to default target which is stored as
- *   BindingPointer and as such contains all the messaging requirements to
- *   automatically rebind to correct target that can be set at anytime with
- *   default_target property in BindingContract.
- *
- *   This design offers having simplified complex pipeline with least amount
- *   of contracts. Note that specifiying same target as default_target with
- *   bind(...) does not result same as calling bind_default(...) because that
- *   would remove ability to refer to one object as stable and moving target
- *   per need.
- * 
- *   NOTE! default_target is just convenience over creating
- *   ContractedBindingPointer and then setting it as target in all bind calls
- *   made per contract. Only difference is that application code will be much
- *   less readable
- *
- * NOTE! Up from here is handling of corner scenarios that always prove to be
- * the most annoying missing part for real usage. Main problem is that they only
- * become obvious when one has done data binding extensively in real world use
- * and had a serious thought about the problem
- *
- * Availability of state/value objects on binding source
- * =====================================================
- *
- * Main case for both is having stable fixed points of connection to binding
- * sources reflecting changes in order to simplify binding for stable parts
- * of GUI/application 
- *
- * - State objects are simple case of bool value where value represents state
- *   of specified condition per binding source. State is not only reflected when
- *   source changes, it can also specify which property notifications to connect
- *   to in order to provide accurate state. In this case Object.bind_property
- *   can be reliably used to have it as fixed and stable point of application
- *
- *   Usage example:
- *   Much like previously described validation with apply, this enables imposing
- *   custom conditions like being able to set visible/sensitive to certain
- *   widgets when Person is male or female or something similar.
- *
- * - Value objects are much like state objects with 2 differences. One is that
- *   they can represent any value type which comes with a little more complexity
- *   as in order to know how to check if value has changed application must
- *   specify CompareFunc or handle notification internally in value assignment.
- *   Another difference is that they allow for live resoving without caching of
- *   value which effectively removes the need to specify property change
- *   notifications value depends on
- *
- * - Add safe pointing to it self in BindingPointer
- *
- * NOTE! While state and value objects are very similar, it still makes sense
- * to differentiate between them as setting state has much simpler API and more
- * fixed requirements than custom value. One could as well always just create
- * value objects <bool> and treat them as such, only differnce is simplicity and
- * readability of code in application.
- *
- *
- *
- * *** just personal thought ***
- * Only real bummer in gtk when considered with databinding is that it doesn't
- * have either type attributes or something simple as
- *
- * virtual string get_value_property_name ()
- * {
- *     // default return when there is no such thing could simply be ""
- *     return ("label");
- * }
- *
- * on GObject or at least GtkWidget.
- *
- * This would be very efficient way to create autobinding templates (or knowing
- * when it is not possible with value being returned as "") and could really
- * advance the design of how laying out databinding plan is done. One of the
- * problems is that each widget has its own default value property such as
- * GtkLabel->"label", GtkEntry->"text"... which is not possible to know unless
- * you handle it per widget type case
- *
- * This is all in one file for the moment only because it is simpler to hack on
- * it this way. Normally, this would be separated.
- *
+ * read README.md
  */
-
 namespace G
 {
+	private const string __DEFAULT__ = "**DEFAULT**";
 	private const string BINDING_SOURCE_STATE_DATA = "binding-source-state-data";
 	private const string BINDING_SOURCE_VALUE_DATA = "binding-source-value-data";
 
@@ -283,6 +44,12 @@ namespace G
 		// - binding on signals
 		// - binding on timers
 		MANUAL
+	}
+
+	public enum ContractChangeType
+	{
+		ADDED,
+		REMOVED
 	}
 
 	public static bool is_binding_pointer (Object? obj)
@@ -330,27 +97,50 @@ namespace G
 		}
 
 		private BindingPointerUpdateType _update_type = BindingPointerUpdateType.PROPERTY;
+		public BindingPointerUpdateType update_type {
+			get {
+				if ((data != null) && 
+				    (data.get_type().is_a(typeof(BindingPointer)) == true))
+					return (((BindingPointer) data).update_type);
+				return (_update_type); 
+			}
+		}
 
-		private WeakReference<Object?> _data = new WeakReference<Object?> (null);
+		private StrictWeakReference<Object?> _data = null;
 		[Description (nick="Data", blurb="Data object pointed by binding pointer")]
-		public virtual Object? data { 
+		public Object? data { 
 			get { return (_data.target); } 
 			set {
+				if (get_source() != null)
+					disconnect_notifications (get_source());
 				if (handle_messages == true)
 					before_source_change (this, is_same_type(data, value), value);
 				unreference_data();
+				if (data != null)
+					unchain_pointer();
 				if (value == this)
-					_data = new WeakReference<Object?>(SELF);
+					_data = new StrictWeakReference<Object?>(SELF, handle_strict_ref);
 				else
-					_data = new WeakReference<Object?>(value); 
+					_data = new StrictWeakReference<Object?>(value, handle_strict_ref);
+				if (data != null)
+					chain_pointer();
 				reference_data();
-				if (handle_messages == true)
+				if (handle_messages == true) {
 					source_changed (this);
+					}
+				if (get_source() != null)
+					connect_notifications (get_source());
 			}
 		}
 
 		protected virtual bool handle_messages {
-			get { return ((data != null) || (data_disposed == true)); }
+			get { return ((get_source() != null) && (data_disposed == false)); }
+		}
+
+		protected virtual Object? redirect_to (ref bool redirect_in_play)
+		{
+			redirect_in_play = false;
+			return (null);
 		}
 
 		// Returns real end of chain value for source object specified in data where
@@ -361,6 +151,16 @@ namespace G
 				return (null);
 			if (data == SELF)
 				return (this);
+			bool redirect = false;
+			// note that custom pointers can break the chain if they are set to point something 
+			// else, otherwise redirection would not be possible as it would always fall on original
+			Object? obj = redirect_to (ref redirect);
+			if (redirect == true) {
+				if (is_binding_pointer(obj) == true)
+					return (((BindingPointer) obj).get_source());
+				return (obj);
+			}
+			// if redirection was not there, follow the chain
 			if (is_binding_pointer(data) == true)
 				return (((BindingPointer) data).get_source());
 			return (data);
@@ -381,10 +181,88 @@ namespace G
 			}
 		}
 
+		private void handle_strict_ref()
+		{
+			data_disposed = true;
+		}
+
+		private void handle_store_weak_ref (Object obj)
+		{
+			unref();
+		}
+
+		private void sub_source_changed (BindingPointer pointer)
+		{
+			source_changed (this);
+		}
+
+		private void before_sub_source_change (BindingPointer pointer, bool is_same, Object? next)
+		{
+			before_source_change (this, is_same, next);
+//			before_source_change (pointer, is_same, next);
+		}
+
+		private void data_dispatch_notify (Object obj, ParamSpec parm)
+		{
+			notify_property("data");
+		}
+
+		public void handle_data_changed (BindingPointer source, string data_change_cookie)
+		{
+			data_changed (this, data_change_cookie);
+		}
+
+		public void handle_connect_notifications (Object? obj)
+		{
+			connect_notifications (obj);
+		}
+
+		public void handle_disconnect_notifications (Object? obj)
+		{
+			disconnect_notifications (obj);
+		}
+
+		private void chain_pointer()
+		{
+			if (is_binding_pointer(data) == false)
+				return;
+			((BindingPointer) data).source_changed.connect (sub_source_changed);
+			((BindingPointer) data).before_source_change.connect (before_sub_source_change);
+			((BindingPointer) data).connect_notifications.connect (handle_connect_notifications);
+			((BindingPointer) data).disconnect_notifications.connect (handle_disconnect_notifications);
+			((BindingPointer) data).data_changed.connect (handle_data_changed);
+			((BindingPointer) data).notify["data"].connect (data_dispatch_notify);
+		}
+
+		private void unchain_pointer()
+		{
+			if (is_binding_pointer(data) == false)
+				return;
+			((BindingPointer) data).source_changed.disconnect (sub_source_changed);
+			((BindingPointer) data).before_source_change.disconnect (before_sub_source_change);
+			((BindingPointer) data).connect_notifications.disconnect (handle_connect_notifications);
+			((BindingPointer) data).disconnect_notifications.disconnect (handle_disconnect_notifications);
+			((BindingPointer) data).data_changed.disconnect (handle_data_changed);
+			((BindingPointer) data).notify["data"].disconnect (data_dispatch_notify);
+		}
+
+		public BindingPointer hold (BindingPointer pointer)
+		{
+			pointer.ref();
+			pointer.weak_ref (pointer.handle_store_weak_ref);
+			return (pointer);
+		}
+
+		public void release (BindingPointer pointer)
+		{
+			pointer.weak_unref (handle_store_weak_ref);
+		}
+
 		protected virtual bool reference_data()
 		{
 			if (data == null)
 				return (false);
+			data_disposed = false;
 			if ((reference_type == BindingReferenceType.WEAK) || (reference_type == BindingReferenceType.DEFAULT))
 				data.weak_ref (handle_weak_ref);
 			else
@@ -409,7 +287,7 @@ namespace G
 		// probably much better for retaining clean code
 		//
 		// The major useful part here is that contract is already binding pointer
-		public signal void data_changed (BindingPointer source, string data_name);
+		public signal void data_changed (BindingPointer source, string data_change_cookie);
 
 		// Signal is called whenever binding pointer "get_source()" would start pointing to new valid location
 		// and allows custom handling to control emission of custom notifications with "data-changed"
@@ -433,8 +311,9 @@ namespace G
 		// Signal is sent after "get_source()" points to new data. 
 		public signal void source_changed (BindingPointer source);
 
-		public BindingPointer (Object? data, BindingReferenceType reference_type = BindingReferenceType.WEAK, BindingPointerUpdateType update_type = BindingPointerUpdateType.PROPERTY)
+		public BindingPointer (Object? data = null, BindingReferenceType reference_type = BindingReferenceType.WEAK, BindingPointerUpdateType update_type = BindingPointerUpdateType.PROPERTY)
 		{
+			_data = new StrictWeakReference<Object?> (null, handle_strict_ref);
 			_reference_type = reference_type;
 			_update_type = update_type;
 			this.data = data;
@@ -836,7 +715,7 @@ namespace G
 	// should be implemented, but with support for activation or manual transfer trigger
 	public class BindingInformation : Object, BindingInformationInterface
 	{
-		private GLib.Binding? binding = null;
+		private BindingInterface? binding = null;
 
 		private WeakReference<BindingContract?> _contract;
 		public BindingContract? contract {
@@ -871,18 +750,18 @@ namespace G
 			get { return (_target_property); }
 		}
 
-		private BindingFlags _flags = GLib.BindingFlags.DEFAULT;
-		public BindingFlags flags {
+		private BindFlags _flags = BindFlags.DEFAULT;
+		public BindFlags flags {
 			get { return (_flags); }
 		}
 
-		private BindingTransformFunc? _transform_to = null;
-		public BindingTransformFunc? transform_to {
+		private PropertyBindingTransformFunc? _transform_to = null;
+		public PropertyBindingTransformFunc? transform_to {
 			get { return (_transform_to); }
 		}
 
-		private BindingTransformFunc? _transform_from = null;
-		public BindingTransformFunc? transform_from {
+		private PropertyBindingTransformFunc? _transform_from = null;
+		public PropertyBindingTransformFunc? transform_from {
 			get { return (_transform_from); }
 		}
 
@@ -942,21 +821,23 @@ namespace G
 
 		public void bind_connection()
 		{
+			Object? tgt = target;
+			if (is_binding_pointer(tgt) == true)
+				tgt = ((BindingPointer) tgt).get_source();
 			if (can_bind == false)
 				return;
 			if (binding != null)
 				unbind_connection();
-			Object? tgt = target;
-			if (is_binding_pointer(tgt) == true)
-				tgt = ((BindingPointer) tgt).get_source();
 			if (tgt == null)
 				return;
 			// Check for property existance in both source and target 
 			if (((ObjectClass) tgt.get_type().class_ref()).find_property(target_property) == null)
-				return;
+				if (PropertyAlias.get_instance(target_property).get_for(tgt.get_type()) == null)
+					return;
 			if (((ObjectClass) contract.get_source().get_type().class_ref()).find_property(source_property) == null)
-				return;
-			binding = contract.get_source().bind_property (source_property, tgt, target_property, flags, transform_to, transform_from);
+				if (PropertyAlias.get_instance(source_property).get_for(contract.get_source().get_type()) == null)
+					return;
+			binding = contract.binder.bind (contract.get_source(), source_property, tgt, target_property, flags, transform_to, transform_from);
 			check_validity();
 			contract.get_source().notify[source_property].connect (check_source_property_validity);
 		}
@@ -975,8 +856,8 @@ namespace G
 		// whenever source changes
 		// case and point example of that to happen is when source can be different types of data and you 
 		// need to adapt editor in full   
-		public BindingInformation bind (string source_property, Object target, string target_property, BindingFlags flags = GLib.BindingFlags.DEFAULT, 
-		                                owned BindingTransformFunc? transform_to = null, owned BindingTransformFunc? transform_from = null, 
+		public BindingInformation bind (string source_property, Object target, string target_property, BindFlags flags = BindFlags.DEFAULT, 
+		                                owned PropertyBindingTransformFunc? transform_to = null, owned PropertyBindingTransformFunc? transform_from = null, 
 		                                owned SourceValidationFunc? source_validation = null)
 		{
 			return (contract.bind (source_property, target, target_property, flags, transform_to, transform_from, source_validation));
@@ -992,8 +873,8 @@ namespace G
 		}
 		
 		internal BindingInformation (BindingContract owner_contract, string source_property, Object target, string target_property, 
-		                             BindingFlags flags = GLib.BindingFlags.DEFAULT, owned BindingTransformFunc? transform_to = null, 
-		                             owned BindingTransformFunc? transform_from = null, owned SourceValidationFunc? source_validation = null)
+		                             BindFlags flags = BindFlags.DEFAULT, owned PropertyBindingTransformFunc? transform_to = null, 
+		                             owned PropertyBindingTransformFunc? transform_from = null, owned SourceValidationFunc? source_validation = null)
 		{
 			_contract = new WeakReference<BindingContract?>(owner_contract);
 			_source_property = source_property;
@@ -1013,155 +894,127 @@ namespace G
 
 	public class BindingPointerFromPropertyValue : BindingPointer
 	{
-		// sadly vala seems to hide the getting value from class by paramspec and reference
-		// so this code takes slower workaround which is not really a problem due to the
-		// fact this provides source
-		private ParamSpec? _last_pspec = null;
-		private bool _property_exists = false;
-		private WeakReference<Object?>? _internal_data = null;
-		private bool object_alive = false;
+		private bool data_disposed = true;
+		private bool property_connected = false;
+		private StrictWeakReference<Object?> _last = null;
 
 		private string _data_property_name = "";
 		public string data_property_name { 
 			get { return (_data_property_name); }
 		}
 
-		private void reset_param_spec()
+		private void handle_property_change (Object obj, ParamSpec prop)
 		{
-			// exit if null so last type is cached
-			Object? obj = get_source();
-			if (obj == null)
-				return;
-			if ((_last_pspec == null) || (_last_pspec.owner_type != obj.get_type())) {
-				ParamSpec? pspec = ((ObjectClass) obj.get_type().class_ref()).find_property (_data_property_name);
-				_property_exists = (pspec != null);
-				if (pspec != null)
-					_last_pspec = pspec;
+			_last = null;
+			renew_data();
+			if (_last.target != null)
+				before_source_change (this, false, _last.target);
+//			renew_data();
+			if (_last.target != null)
+				source_changed (this);
+		}
+
+		private void handle_before_source_change (BindingPointer pointer, bool is_same, Object? next)
+		{
+			if (_last.target != null) {
+				if ((property_connected == true) || (data_disposed == false)) {
+					get_source().notify[_data_property_name].disconnect (handle_property_change);
+				}
+				property_connected = false;
+			}
+			_last = null;
+		}
+
+		private void handle_source_changed (BindingPointer pointer)
+		{
+			_last = null;
+			renew_data();
+			if (_last.target != null) {
+				if ((property_connected == true) || (data_disposed == false)) {
+					_last.target.notify[_data_property_name].connect (handle_property_change);
+					property_connected = false;
+				}
 			}
 		}
 
-		protected override bool unreference_data()
+		private void handle_strict_ref()
 		{
-			unreference_internal_data();
-			base.unreference_data();
-			return (get_source() != null);
+			data_disposed = true;
+			_last = null;
+		}
+
+		private void renew_data()
+		{
+			data_disposed = true;
+			_last = new StrictWeakReference<Object?>(null);
+			Object? obj;
+			if (is_binding_pointer(data) == true)
+				obj = ((BindingPointer) data).get_source();
+			else
+				obj = data;
+			if (obj == null)
+				return;
+			ParamSpec? parm = ((ObjectClass) obj.get_type().class_ref()).find_property (_data_property_name);
+			if (parm == null) {
+				string? nn = PropertyAlias.get_instance(_data_property_name).get_for(obj.get_type());
+				if (nn != null)
+					parm = ((ObjectClass) obj.get_type().class_ref()).find_property (nn);
+				if (parm == null)
+					return;
+			}
+			if (parm.value_type.is_a(typeof(GLib.Object)) == false)
+				return;
+			GLib.Value val = GLib.Value(typeof(GLib.Object));
+			obj.get_property (parm.name, ref val);
+			Object oobj = val.get_object();
+			data_disposed = false;
+			_last = new StrictWeakReference<Object?>(oobj, handle_strict_ref);
+		}
+
+		protected override Object? redirect_to (ref bool redirect_in_play)
+		{
+			redirect_in_play = true;
+			if (_last == null)
+				renew_data();
+			return (_last.target);
 		}
 
 		protected override bool reference_data()
 		{
-			base.reference_data();
-			reference_internal_data();
-			return (get_source() != null);
-		}
-
-		private void handle_weak_reference_to_data (Object old_obj)
-		{
-			// value can be non null as it is value of the property
-			Object? oobj = (object_alive == true) ? get_source() : null; // returns cached in _internal_data
-			_internal_data = null;
-			Object? obj = get_source(); // _internal_data updated
-			bool is_same = type_is_same_as ((oobj == null) ? (Type?) null : _last_pspec.owner_type,
-			                                (obj == null) ? (Type?) null : obj.get_type());
-			object_alive = (obj != null);
-			before_source_change (this, is_same, obj);
-			if (is_same == false) {
-				reset_param_spec();
-				if (object_alive == true)
-					reference_internal_data();
+			bool res = base.reference_data();
+			if (res == true) {
+/*
+				if ((reference_type == BindingReferenceType.WEAK) || (reference_type == BindingReferenceType.DEFAULT))
+					data.weak_ref (handle_weak_ref);
+				else
+					data.@ref();
+*/
 			}
-			_internal_data = null;
-			source_changed (this);
+			return (true);
 		}
 
-		private void handle_property_data_change (ParamSpec pspec)
+		protected override bool unreference_data()
 		{
-			Object? oobj = get_source();
-			unreference_internal_data ();
-			_internal_data = null;
-			Object? obj = get_source();
-			before_source_change (this, is_same_type(oobj, obj), obj);
-			reference_internal_data();
-			source_changed (this);
-		}
-
-		public BindingPointerFromPropertyValue chain_property (string property_name, BindingReferenceType reference_type = BindingReferenceType.DEFAULT, BindingPointerUpdateType update_type = BindingPointerUpdateType.PROPERTY)
-		{
-			return (new BindingPointerFromPropertyValue (this, property_name, reference_type, update_type));
-		}
-
-		private void reference_internal_data()
-		{
-			_internal_data = null;
-			Object? obj = get_source();
-			object_alive = (obj != null);
-			reset_param_spec();
-			if (object_alive == false)
-				return;
-			if (reference_type != BindingReferenceType.STRONG)
-				obj.ref();
-			else {
-				if (object_alive == true) {
-					obj.weak_ref (handle_weak_reference_to_data);
-				}
+			bool res = base.reference_data();
+			if (res == true) {
+			/*
+				if ((reference_type == BindingReferenceType.WEAK) || (reference_type == BindingReferenceType.DEFAULT))
+					data.weak_unref (handle_weak_ref);
+				else
+					data.unref();
+					*/
 			}
-			if (_property_exists == true)
-				obj.notify[data_property_name].connect (handle_property_data_change);
-		}
-
-		private void unreference_internal_data()
-		{
-			if (object_alive == false)
-				return;
-			Object? obj = get_source();
-			if (obj == null)
-				return;
-			if (_property_exists == true)
-				obj.notify[data_property_name].disconnect (handle_property_data_change);
-			if (reference_type != BindingReferenceType.STRONG)
-				obj.unref();
-			else {
-				if (object_alive == true) {
-					obj.weak_unref (handle_weak_reference_to_data);
-//					_internal_data = null;
-//					object_alive = false;//(obj != null);
-				}
-			}
-			object_alive = false;
-			_internal_data = null;
-		}
-
-		public override Object? get_source()
-		{
-			if (_internal_data == null) {
-				Object? obj = base.get_source();
-				if (obj == null)
-					_internal_data = new WeakReference<Object?> (null);
-				else {
-					// discover property and set its value as source
-//					reset_param_spec();
-					if (_last_pspec == null)
-						_internal_data = new WeakReference<Object?> (null);
-					else {
-						// Property exists, time to set its value
-						GLib.Value val = GLib.Value(typeof(GLib.Object));
-						obj.get_property (data_property_name, ref val);
-						if (_property_exists == true)
-							_internal_data = new WeakReference<Object?> (val.get_object());
-						else
-							_internal_data = new WeakReference<Object?> (null);
-					}
-				}
-			}
-			return (_internal_data.target);
+			data_disposed = false;
+			return (true);
 		}
 
 		public BindingPointerFromPropertyValue (Object? data, string data_property_name, BindingReferenceType reference_type = BindingReferenceType.DEFAULT, BindingPointerUpdateType update_type = BindingPointerUpdateType.PROPERTY)
 			requires (data_property_name != "")
 		{
-			base (null, reference_type, update_type);
+			base (data, reference_type, update_type);
 			_data_property_name = data_property_name;
-			get_source();
-			reference_internal_data();
+			before_source_change.connect (handle_before_source_change);
+			source_changed.connect (handle_source_changed);
 		}
 	}
 
@@ -1249,23 +1102,6 @@ namespace G
 			get { return (_last_valid_state); }
 		}
 
-		public override Object? data {
-			get { return (base.data); }
-			set { 
-				if (data == value)
-					return;
-				if (data != null) {
-					disolve_contract (value == null);
-					disconnect_lifetime();
-				}
-				base.data = value;
-				if (data != null) {
-					connect_lifetime();
-					bind_contract();
-				}
-			}
-		}
-
 		private BindingPointer? _default_target = null;
 		public Object? default_target {
 			get { return (_default_target.data); }
@@ -1278,29 +1114,40 @@ namespace G
 			}
 		}
 
+		private Binder? _binder = null;
+		public Binder? binder {
+			owned get { 
+				if (_binder == null)
+					return (Binder.get_default());
+				return (_binder); 
+			}
+			set { binder = value; }
+		}
+
 		private void disconnect_lifetime()
 		{
 			if (data == null)
 				return;
-			if (get_source() != data) {
+			if (is_binding_pointer(data) == true) {
 				sub_source_changed(this);
 
 				before_source_change.disconnect (master_before_sub_source_change);
 				((BindingPointer) data).source_changed.connect (sub_source_changed);
 				((BindingPointer) data).before_source_change.connect (before_sub_source_change);
 			}
+			handle_is_valid (null);
 		}
 
 		private void sub_source_changed (BindingPointer src)
 		{
-			source_changed (this);
-			bind_contract();
+			bind_contract(false);
+			handle_is_valid (null);
 		}
-		
+
 		private void before_sub_source_change (BindingPointer src, bool same_type, Object? next_source)
 		{
-			disolve_contract (next_source == null);
-			before_source_change (this, same_type, next_source);
+			disolve_contract (false);//next_source == null);
+			handle_is_valid (null);
 		}
 
 		private void master_before_sub_source_change (BindingPointer src, bool same_type, Object? next_source)
@@ -1321,13 +1168,12 @@ namespace G
 				return;
 
 			// connect to lifetime if this is a case for source chaining 
-			if (get_source() != data) {
+			if (is_binding_pointer(data) == true) {
 				sub_source_changed(this);
 
 				before_source_change.connect (master_before_sub_source_change);
-				((BindingPointer) data).source_changed.connect (sub_source_changed);
-				((BindingPointer) data).before_source_change.connect (before_sub_source_change);
 			}
+			handle_is_valid (null);
 		}
 
 		private void disolve_contract (bool emit_contract_change)
@@ -1339,13 +1185,15 @@ namespace G
 				contract_changed (this);
 		}
 
-		private void bind_contract()
+		private void bind_contract(bool emit_contract_change = true)
 		{
 			if (can_bind == false)
 				return;
 			for (int i=0; i<_items.length; i++)
 				_items.data[i].binding.bind_connection();
-			contract_changed (this);
+			if (emit_contract_change == true)
+				contract_changed (this);
+			handle_is_valid (null);
 		}
 
 		public BindingInformationInterface? get_item_at_index (int index)
@@ -1355,15 +1203,18 @@ namespace G
 			return (_items.data[index].binding);
 		}
 
-		private void handle_is_valid (ParamSpec parm)
+		private void handle_is_valid (ParamSpec? parm)
 		{
 			bool validity = true;
-			for (int i=0; i<_items.data.length; i++) {
-				if (_items.data[i].binding.is_valid == false) {
-					validity = false;
-					break;
+			if (get_source() != null)
+				for (int i=0; i<_items.data.length; i++) {
+					if (_items.data[i].binding.is_valid == false) {
+						validity = false;
+						break;
+					}
 				}
-			}
+			else
+				validity = false;
 			if (validity != _last_valid_state) {
 				_last_valid_state = validity;
 				notify_property ("is-valid");
@@ -1398,8 +1249,8 @@ namespace G
 			return (info);
 		}
 
-		public BindingInformation bind (string source_property, Object target, string target_property, BindingFlags flags = GLib.BindingFlags.DEFAULT, 
-		                                owned BindingTransformFunc? transform_to = null, owned BindingTransformFunc? transform_from = null,
+		public BindingInformation bind (string source_property, Object target, string target_property, BindFlags flags = BindFlags.DEFAULT, 
+		                                owned PropertyBindingTransformFunc? transform_to = null, owned PropertyBindingTransformFunc? transform_from = null,
 		                                owned SourceValidationFunc? source_validation = null)
 			requires (source_property != "")
 			requires (target_property != "")
@@ -1407,8 +1258,8 @@ namespace G
 			return ((BindingInformation) bind_information (new BindingInformation (this, source_property, target, target_property, flags, transform_to, transform_from, source_validation)));
 		}
 
-		public BindingInformation bind_default (string source_property, string target_property, BindingFlags flags = GLib.BindingFlags.DEFAULT, 
-		                                        owned BindingTransformFunc? transform_to = null, owned BindingTransformFunc? transform_from = null,
+		public BindingInformation bind_default (string source_property, string target_property, BindFlags flags = BindFlags.DEFAULT, 
+		                                        owned PropertyBindingTransformFunc? transform_to = null, owned PropertyBindingTransformFunc? transform_from = null,
 		                                        owned SourceValidationFunc? source_validation = null)
 			requires (source_property != "")
 			requires (target_property != "")
@@ -1443,6 +1294,8 @@ namespace G
 
 		public signal void contract_changed (BindingContract contract);
 
+		public signal void bindings_changed (BindingContract contract, ContractChangeType change_type, BindingInformation binding);
+
 		protected virtual void disconnect_contract()
 		{
 			if (finalizing_in_progress == true)
@@ -1461,7 +1314,7 @@ namespace G
 			disconnect_contract();
 		}
 
-		public BindingContract.add_to_manager (BindingContractManager contract_manager, string name, Object? data = null, BindingReferenceType reference_type = BindingReferenceType.WEAK, BindingPointerUpdateType update_type = BindingPointerUpdateType.PROPERTY)
+		public BindingContract.add_to_manager (ContractStorage contract_manager, string name, Object? data = null, BindingReferenceType reference_type = BindingReferenceType.WEAK, BindingPointerUpdateType update_type = BindingPointerUpdateType.PROPERTY)
 		{
 			this (data, reference_type, update_type);
 			contract_manager.add (name, this);
@@ -1469,113 +1322,354 @@ namespace G
 
 		public BindingContract.add_to_default_manager (string name, Object? data = null, BindingReferenceType reference_type = BindingReferenceType.WEAK, BindingPointerUpdateType update_type = BindingPointerUpdateType.PROPERTY)
 		{
-			this.add_to_manager (BindingContractManager.get_default(), name, data, reference_type, update_type);
+			this.add_to_manager (ContractStorage.get_default(), name, data, reference_type, update_type);
 		}
 
 		public BindingContract (Object? data = null, BindingReferenceType reference_type = BindingReferenceType.WEAK, BindingPointerUpdateType update_type = BindingPointerUpdateType.PROPERTY)
 		{
 			base (null, reference_type, update_type);
+			before_source_change.connect((binding, is_same, next) => {
+				if (get_source() != null) {
+					disolve_contract (next == null);
+					disconnect_lifetime();
+				}
+			});
 			contract_changed.connect ((src) => { 
 				if (last_source.target == src.get_source())
 					return;
 				last_source = new WeakReference<Object?>(src.get_source());
+			});
+			source_changed.connect ((binding) => {
+				if (get_source() != null) {
+					connect_lifetime();
+					bind_contract();
+				}
 			});
 			this.data = data;
 			// no binding here yet, so nothing else is required
 		}
 	}
 
-	// intentional implementation with non weak reference, since this allows to use
-	// manager as reference holder
-	internal class NamedContract
+	public class BindingSuspensionGroup : Object
 	{
-		private string _name = "";
-		public string name { 
-			get { return (_name); } 
+		private static int counter = 1;
+
+		private int id;
+
+		private bool _suspended = false;
+		public bool suspended {
+			get { return (_suspended); }
+			set { 
+				if (_suspended == value)
+					return;
+				_suspended = value; 
+			}
 		}
 
-		private BindingContract _contract;
-		public BindingContract contract { 
-			get { return (_contract); }
-		}
-
-		public void unref_contract()
+		public void add (BindingContract? contract)
 		{
-			_contract = null;
+			if (contract == null)
+				return;
+			StrictWeakReference<PropertyBinding?> prop = contract.get_data<StrictWeakReference<PropertyBinding?>>("suspend-group-%i".printf(id));
+			if ((prop != null) && (prop.target != null))
+				return;
+			PropertyBinding nprop = PropertyBinding.bind (this, "suspended", contract, "suspended", BindFlags.SYNC_CREATE);
+			contract.set_data<StrictWeakReference<PropertyBinding?>> ("suspend-group-%i".printf(id), new StrictWeakReference<PropertyBinding?>(nprop));
 		}
 
-		~NamedContract()
+		public void remove (BindingContract? contract)
 		{
-			unref_contract();
+			StrictWeakReference<PropertyBinding?> prop = contract.get_data<StrictWeakReference<PropertyBinding?>> ("suspend-group-%i".printf(id));
+			if ((prop != null) && (prop.target != null)) {
+				contract.set_data<StrictWeakReference<PropertyBinding?>> ("suspend-group-%i".printf(id), new StrictWeakReference<PropertyBinding?> (null));
+				prop.target.unbind();
+			}
 		}
 
-		public NamedContract (string name, BindingContract contract)
+		public BindingSuspensionGroup()
 		{
-			_name = name;
-			_contract = contract;
+			id = counter;
+			counter++;
 		}
 	}
 
-	public class BindingContractManager : Object
+	public class PointerArray : MasterSlaveArray<string, string, WeakReference<BindingPointer>>
 	{
-		private bool finalizing_in_progress = false;
-		private static BindingContractManager _default_contract_manager = null;
+	}
 
-		private GLib.Array<NamedContract> _contracts = new GLib.Array<NamedContract>();
-
-		public static BindingContractManager get_default()
-		{
-			if (_default_contract_manager == null)
-				_default_contract_manager = new BindingContractManager();
-			return (_default_contract_manager);
-		}
-
-		public void clean()
-		{
-			while (_contracts.length > 0) {
-				_contracts.data[0].unref_contract();
-				_contracts.remove_index(0);
+	private static void add_ptr_storage (string s, PointerArray list)
+	{
+		KeyValueArray<string, WeakReference<BindingPointer>> sub_list = new KeyValueArray<string, WeakReference<BindingPointer>>();
+		PointerStorage storage = PointerStorage.get_storage (s);
+		storage.foreach_registration ((t, p) => {
+			sub_list.add (new KeyValuePair<string, WeakReference<BindingPointer>> (t, new WeakReference<BindingPointer>(p)));
+		});
+		storage.added.connect ((t, p) => {
+			sub_list.add (new KeyValuePair<string, WeakReference<BindingPointer>> (t, new WeakReference<BindingPointer>(p)));
+		});
+		storage.removed.connect ((t, p) => {
+			for (int i=0; i<sub_list.length; i++) {
+				if (p == sub_list.data[i].val.target) {
+					sub_list.remove_at_index(i);
+					return;
+				}
 			}
+		});
+		KeyValuePair<string, KeyValueArray<string, WeakReference<BindingPointer>>> pair = 
+			new KeyValuePair<string, KeyValueArray<string, WeakReference<BindingPointer>>>(s, sub_list);
+		list.add (pair);
+	}
+
+	public static PointerArray track_pointer_storage()
+	{
+		PointerArray list = new PointerArray();
+		PointerStorage.foreach_storage ((s) => {
+			add_ptr_storage (s, list);
+		});
+		PointerStorage.StorageSignal.get_instance().added_storage.connect ((s) => {
+			add_ptr_storage (s, list);
+		});
+		return (list);
+	}
+
+	// storage for pointers in order to have guaranteed reference when
+	// there is no need for local variable or to have them globally 
+	// accessible by name
+	public class PointerStorage : Object
+	{
+		internal class StorageSignal
+		{
+			private static StorageSignal? _instance = null;
+			public static StorageSignal get_instance()
+			{
+				if (_instance == null)
+					_instance = new StorageSignal();
+				return (_instance);
+			}
+
+			public signal void added_storage (string storage_name);
 		}
 
-		public BindingContract? get_contract (string name)
-			requires (name != "")
+		internal static void foreach_storage (Func<string> method)
 		{
-			for (int i=0; i<_contracts.length; i++)
-				if (_contracts.data[i].name == name)
-					return (_contracts.data[i].contract);
-			return (null);
+			if (_storages != null)
+				_storages.for_each ((s,p) => {
+					method(s);
+				});
 		}
 
-		public void add (string name, BindingContract contract)
-			requires (name != "")
+		internal void foreach_registration (HFunc<string, BindingContract> method)
 		{
-			if (get_contract(name) != null)
-				return;
-			_contracts.append_val (new NamedContract (name, contract));
+			if (_objects != null)
+				_objects.for_each (method);
+		}
+
+		private static HashTable<string, PointerStorage>? _storages = null;
+		private HashTable<string, BindingPointer>? _objects = null;
+
+		private static void _check()
+		{
+			if (_storages == null)
+				_storages = new HashTable<string, PointerStorage> (str_hash, str_equal);
+		}
+
+		public static PointerStorage get_default()
+		{
+			return (get_storage (__DEFAULT__));
+		}
+
+		public static PointerStorage? get_storage (string name)
+		{
+			_check();
+			PointerStorage? store = _storages.get (name);
+			if (store == null) {
+				store = new PointerStorage();
+				_storages.insert (name, store);
+				StorageSignal.get_instance().added_storage (name);
+			}
+			return (store);
+		}
+
+		public BindingPointer? find (string name)
+		{
+			if (_objects == null)
+				return (null);
+			return (_objects.get (name));
+		}
+
+		public BindingPointer? add (string name, BindingPointer? obj)
+		{
+			if (obj == null) {
+				GLib.warning ("Trying to add [null] as stored pointer \"%s\"!".printf(name));
+				return (null);
+			}
+			if (find(name) != null) {
+				GLib.critical ("Duplicate stored pointer \"%s\"!".printf(name));
+				return (null);
+			}
+			if (_objects == null)
+				_objects = new HashTable<string, BindingPointer> (str_hash, str_equal);
+			_objects.insert (name, obj);
+			added (name, obj);
+			return (obj);
 		}
 
 		public void remove (string name)
-			requires (name != "")
 		{
-			for (int i=0; i<_contracts.length; i++) {
-				if (_contracts.data[i].name == name) {
-					_contracts.data[i].unref_contract();
-					_contracts.remove_index (i);
+			BindingPointer obj = find (name);
+			if (obj == null)
+				return;
+			_objects.remove (name);
+			removed (name, obj);
+		}
+
+		public signal void added (string name, BindingPointer obj);
+
+		public signal void removed (string name, BindingPointer obj);
+
+		public PointerStorage()
+		{
+			_objects = new HashTable<string, BindingPointer> (str_hash, str_equal);
+		}
+	}
+
+	public class ContractArray : MasterSlaveArray<string, string, WeakReference<BindingContract>>
+	{
+	}
+
+	private static void add_storage (string s, ContractArray list)
+	{
+		KeyValueArray<string, WeakReference<BindingContract>> sub_list = new KeyValueArray<string, WeakReference<BindingContract>>();
+		ContractStorage storage = ContractStorage.get_storage (s);
+		storage.foreach_registration ((t, p) => {
+			sub_list.add (new KeyValuePair<string, WeakReference<BindingContract>> (t, new WeakReference<BindingContract>(p)));
+		});
+		storage.added.connect ((t, p) => {
+			sub_list.add (new KeyValuePair<string, WeakReference<BindingContract>> (t, new WeakReference<BindingContract>(p)));
+		});
+		storage.removed.connect ((t, p) => {
+			for (int i=0; i<sub_list.length; i++) {
+				if (p == sub_list.data[i].val.target) {
+					sub_list.remove_at_index(i);
+					return;
 				}
 			}
+		});
+		KeyValuePair<string, KeyValueArray<string, WeakReference<BindingContract>>> pair = 
+			new KeyValuePair<string, KeyValueArray<string, WeakReference<BindingContract>>>(s, sub_list);
+		list.add (pair);
+	}
+
+	public static ContractArray track_contract_storage()
+	{
+		ContractArray list = new ContractArray();
+		ContractStorage.foreach_storage ((s) => {
+			add_storage (s, list);
+		});
+		ContractStorage.StorageSignal.get_instance().added_storage.connect ((s) => {
+			add_storage (s, list);
+		});
+		return (list);
+	}
+
+	// storage for contracts in order to have guaranteed reference when
+	// there is no need for local variable or to have them globally 
+	// accessible by name
+	public class ContractStorage : Object
+	{
+		internal class StorageSignal
+		{
+			private static StorageSignal? _instance = null;
+			public static StorageSignal get_instance()
+			{
+				if (_instance == null)
+					_instance = new StorageSignal();
+				return (_instance);
+			}
+
+			public signal void added_storage (string storage_name);
 		}
 
-		~BindingContractManager()
+		internal static void foreach_storage (Func<string> method)
 		{
-			if (finalizing_in_progress == true)
+			if (_storages != null)
+				_storages.for_each ((s,p) => {
+					method(s);
+				});
+		}
+
+		internal void foreach_registration (HFunc<string, BindingContract> method)
+		{
+			if (_objects != null)
+				_objects.for_each (method);
+		}
+
+		private static HashTable<string, ContractStorage>? _storages = null;
+		private HashTable<string, BindingContract>? _objects = null;
+
+		private static void _check()
+		{
+			if (_storages == null)
+				_storages = new HashTable<string, ContractStorage> (str_hash, str_equal);
+		}
+
+		public static ContractStorage get_default()
+		{
+			return (get_storage (__DEFAULT__));
+		}
+
+		public static ContractStorage? get_storage (string name)
+		{
+			_check();
+			ContractStorage? store = _storages.get (name);
+			if (store == null) {
+				store = new ContractStorage();
+				_storages.insert (name, store);
+				StorageSignal.get_instance().added_storage (name);
+			}
+			return (store);
+		}
+
+		public BindingContract? find (string name)
+		{
+			if (_objects == null)
+				return (null);
+			return (_objects.get (name));
+		}
+
+		public BindingContract? add (string name, BindingContract? obj)
+		{
+			if (obj == null) {
+				GLib.warning ("Trying to add [null] as stored contract \"%s\"!".printf(name));
+				return (null);
+			}
+			if (find(name) != null) {
+				GLib.critical ("Duplicate stored contract \"%s\"!".printf(name));
+				return (null);
+			}
+			if (_objects == null)
+				_objects = new HashTable<string, BindingContract> (str_hash, str_equal);
+			_objects.insert (name, obj);
+			added (name, obj);
+			return (obj);
+		}
+
+		public void remove (string name)
+		{
+			BindingContract obj = find (name);
+			if (obj == null)
 				return;
-			finalizing_in_progress = true;
-			clean();
+			_objects.remove (name);
+			removed (name, obj);
 		}
 
-		public BindingContractManager()
+		public signal void added (string name, BindingContract obj);
+
+		public signal void removed (string name, BindingContract obj);
+
+		public ContractStorage()
 		{
+			_objects = new HashTable<string, BindingContract> (str_hash, str_equal);
 		}
 	}
 }

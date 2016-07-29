@@ -101,6 +101,7 @@ PROGRAMS = $(bin_PROGRAMS)
 am_data_binding_poc_vala_OBJECTS =  \
 	data_binding_poc_vala-convenience_classes.$(OBJEXT) \
 	data_binding_poc_vala-binding_contract.$(OBJEXT) \
+	data_binding_poc_vala-property_binding.$(OBJEXT) \
 	data_binding_poc_vala-main.$(OBJEXT)
 data_binding_poc_vala_OBJECTS = $(am_data_binding_poc_vala_OBJECTS)
 am__DEPENDENCIES_1 =
@@ -173,7 +174,7 @@ CTAGS = ctags
 am__DIST_COMMON = $(srcdir)/Makefile.in \
 	$(srcdir)/data_binding_poc_vala_vala.stamp \
 	$(top_srcdir)/depcomp binding_contract.c convenience_classes.c \
-	main.c
+	main.c property_binding.c
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = ${SHELL} /home/public/Projects/data_binding_poc_vala/missing aclocal-1.15
 AMTAR = $${TAR-tar}
@@ -270,6 +271,7 @@ data_binding_poc_vala_SOURCES = \
 	config.vapi \
 	convenience_classes.vala \
 	binding_contract.vala \
+	property_binding.vala \
 	main.vala
 
 data_binding_poc_vala_CFLAGS = \
@@ -372,6 +374,7 @@ distclean-compile:
 include ./$(DEPDIR)/data_binding_poc_vala-binding_contract.Po
 include ./$(DEPDIR)/data_binding_poc_vala-convenience_classes.Po
 include ./$(DEPDIR)/data_binding_poc_vala-main.Po
+include ./$(DEPDIR)/data_binding_poc_vala-property_binding.Po
 
 .c.o:
 	$(AM_V_CC)$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -415,6 +418,20 @@ data_binding_poc_vala-binding_contract.obj: binding_contract.c
 #	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
 #	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(data_binding_poc_vala_CFLAGS) $(CFLAGS) -c -o data_binding_poc_vala-binding_contract.obj `if test -f 'binding_contract.c'; then $(CYGPATH_W) 'binding_contract.c'; else $(CYGPATH_W) '$(srcdir)/binding_contract.c'; fi`
 
+data_binding_poc_vala-property_binding.o: property_binding.c
+	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(data_binding_poc_vala_CFLAGS) $(CFLAGS) -MT data_binding_poc_vala-property_binding.o -MD -MP -MF $(DEPDIR)/data_binding_poc_vala-property_binding.Tpo -c -o data_binding_poc_vala-property_binding.o `test -f 'property_binding.c' || echo '$(srcdir)/'`property_binding.c
+	$(AM_V_at)$(am__mv) $(DEPDIR)/data_binding_poc_vala-property_binding.Tpo $(DEPDIR)/data_binding_poc_vala-property_binding.Po
+#	$(AM_V_CC)source='property_binding.c' object='data_binding_poc_vala-property_binding.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
+#	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(data_binding_poc_vala_CFLAGS) $(CFLAGS) -c -o data_binding_poc_vala-property_binding.o `test -f 'property_binding.c' || echo '$(srcdir)/'`property_binding.c
+
+data_binding_poc_vala-property_binding.obj: property_binding.c
+	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(data_binding_poc_vala_CFLAGS) $(CFLAGS) -MT data_binding_poc_vala-property_binding.obj -MD -MP -MF $(DEPDIR)/data_binding_poc_vala-property_binding.Tpo -c -o data_binding_poc_vala-property_binding.obj `if test -f 'property_binding.c'; then $(CYGPATH_W) 'property_binding.c'; else $(CYGPATH_W) '$(srcdir)/property_binding.c'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/data_binding_poc_vala-property_binding.Tpo $(DEPDIR)/data_binding_poc_vala-property_binding.Po
+#	$(AM_V_CC)source='property_binding.c' object='data_binding_poc_vala-property_binding.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
+#	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(data_binding_poc_vala_CFLAGS) $(CFLAGS) -c -o data_binding_poc_vala-property_binding.obj `if test -f 'property_binding.c'; then $(CYGPATH_W) 'property_binding.c'; else $(CYGPATH_W) '$(srcdir)/property_binding.c'; fi`
+
 data_binding_poc_vala-main.o: main.c
 	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(data_binding_poc_vala_CFLAGS) $(CFLAGS) -MT data_binding_poc_vala-main.o -MD -MP -MF $(DEPDIR)/data_binding_poc_vala-main.Tpo -c -o data_binding_poc_vala-main.o `test -f 'main.c' || echo '$(srcdir)/'`main.c
 	$(AM_V_at)$(am__mv) $(DEPDIR)/data_binding_poc_vala-main.Tpo $(DEPDIR)/data_binding_poc_vala-main.Po
@@ -438,14 +455,19 @@ $(srcdir)/binding_contract.c: $(srcdir)/data_binding_poc_vala_vala.stamp
 	@if test -f $@; then :; else \
 	  $(MAKE) $(AM_MAKEFLAGS) $(srcdir)/data_binding_poc_vala_vala.stamp; \
 	fi
+$(srcdir)/property_binding.c: $(srcdir)/data_binding_poc_vala_vala.stamp
+	@if test -f $@; then :; else rm -f $(srcdir)/data_binding_poc_vala_vala.stamp; fi
+	@if test -f $@; then :; else \
+	  $(MAKE) $(AM_MAKEFLAGS) $(srcdir)/data_binding_poc_vala_vala.stamp; \
+	fi
 $(srcdir)/main.c: $(srcdir)/data_binding_poc_vala_vala.stamp
 	@if test -f $@; then :; else rm -f $(srcdir)/data_binding_poc_vala_vala.stamp; fi
 	@if test -f $@; then :; else \
 	  $(MAKE) $(AM_MAKEFLAGS) $(srcdir)/data_binding_poc_vala_vala.stamp; \
 	fi
-$(srcdir)/data_binding_poc_vala_vala.stamp: config.vapi convenience_classes.vala binding_contract.vala main.vala
+$(srcdir)/data_binding_poc_vala_vala.stamp: config.vapi convenience_classes.vala binding_contract.vala property_binding.vala main.vala
 	$(AM_V_at)rm -f $@ && echo stamp > $@-t
-	$(AM_V_VALAC)$(am__cd) $(srcdir) && $(VALAC) $(data_binding_poc_vala_VALAFLAGS) $(VALAFLAGS) -C config.vapi convenience_classes.vala binding_contract.vala main.vala
+	$(AM_V_VALAC)$(am__cd) $(srcdir) && $(VALAC) $(data_binding_poc_vala_VALAFLAGS) $(VALAFLAGS) -C config.vapi convenience_classes.vala binding_contract.vala property_binding.vala main.vala
 	$(AM_V_at)mv -f $@-t $@
 
 ID: $(am__tagged_files)
@@ -571,9 +593,11 @@ maintainer-clean-generic:
 	-rm -f $(srcdir)/convenience_classes.c
 	-rm -f $(srcdir)/data_binding_poc_vala_vala.stamp
 	-rm -f $(srcdir)/main.c
+	-rm -f $(srcdir)/property_binding.c
 	-rm -f binding_contract.c
 	-rm -f convenience_classes.c
 	-rm -f main.c
+	-rm -f property_binding.c
 clean: clean-am
 
 clean-am: clean-binPROGRAMS clean-generic mostlyclean-am
