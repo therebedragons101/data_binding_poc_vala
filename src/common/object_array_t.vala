@@ -1,32 +1,5 @@
-/*
- *
- * Disregard this code as it only serves for demo purposes with some convenience
- * classes. Nothing in this file is even remotely related to data binding
- *
- */
-
 namespace G
 {
-	public enum CompareDataBy
-	{
-		REFERENCE,
-		UNIQUE_OBJECTS,
-		FUNCTION
-	}
-
-	public delegate void SimpleDelegate();
-
-	public delegate void SimplePassDataDelegate<T>(T data);
-
-	public delegate void SearchDelegate (string search_for);
-
-	public delegate bool FindObjectDelegate<T> (T data);
-
-	public interface IUniqueByProperies : Object
-	{
-		public abstract int compare_to (IUniqueByProperies object);
-	}
-
 	public class ObjectArray<T> : Object, ListModel
 	{
 		// ListModel implementation
@@ -174,7 +147,7 @@ namespace G
 
 		private static int compare___by_properties (T object1, T object2)
 		{
-			return (((IUniqueByProperies) object1).compare_to ((IUniqueByProperies) object2));
+			return (((UniqueByProperies) object1).compare_to ((UniqueByProperies) object2));
 		}
 
 		public signal void element_added (T element);		
@@ -187,19 +160,19 @@ namespace G
 
 		public signal void array_sorted();		
 
-		public ObjectArray.unique (CompareDataBy compare_by = CompareDataBy.REFERENCE, CompareFunc<T>? compare_method = null)
+		public ObjectArray.unique (CompareDataBy compare_by = CompareDataBy.REFERENCE, owned CompareFunc<T>? compare_method = null)
 		{
 			this (compare_by, compare_method);
 			force_unique = true;
 		}
 
-		public ObjectArray.from_array (GLib.Array<T> from_array, CompareDataBy compare_by = CompareDataBy.REFERENCE, CompareFunc<T>? compare_method = null)
+		public ObjectArray.from_array (GLib.Array<T> from_array, CompareDataBy compare_by = CompareDataBy.REFERENCE, owned CompareFunc<T>? compare_method = null)
 		{
 			this (compare_by, compare_method);
 			_array = from_array;
 		}
 		
-		public ObjectArray.unique_from_array (GLib.Array<T> from_array, CompareDataBy compare_by = CompareDataBy.REFERENCE, CompareFunc<T>? compare_method = null)
+		public ObjectArray.unique_from_array (GLib.Array<T> from_array, CompareDataBy compare_by = CompareDataBy.REFERENCE, owned CompareFunc<T>? compare_method = null)
 		{
 			this (compare_by, compare_method);
 			force_unique = true;
@@ -215,54 +188,5 @@ namespace G
 			else if (compare_by == CompareDataBy.FUNCTION)
 				_compare_delegate = compare_method;
 		}
-	}
-
-	public delegate void WeakReferenceInvalid();
-
-	public class WeakReference<T> 
-	{
-		protected weak T? _target;
-		public T? target { 
-			get { return (_target); }
-		}
-
-		public WeakReference (T? set_to_target)
-		{
-			_target = set_to_target;
-		}
-	}
-
-	public class StrictWeakReference<T> : WeakReference<T>
-	{
-		private WeakReferenceInvalid? _notify_method = null;
-
-		private void handle_weak_ref (Object o)
-		{
-			if (_target == null)
-				return;
-			_target = null;
-			if (_notify_method != null)
-				_notify_method();
-		}
-
-		~StrictWeakReference()
-		{
-			if (_target != null) {
-				((Object) _target).weak_unref (handle_weak_ref); 
-				_target = null;
-			}
-		}
-
-		public StrictWeakReference (T? set_to_target, owned WeakReferenceInvalid? notify_method = null)
-		{
-			base (set_to_target);
-			_notify_method = (owned) notify_method;
-			if (_target is GLib.Object)
-				((Object) _target).weak_ref (handle_weak_ref); 
-			else
-				if (_target != null)
-					GLib.warning ("Cannot set weak_ref on non GLib.Object");
-		}
-
 	}
 }
