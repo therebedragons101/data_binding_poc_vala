@@ -23,7 +23,7 @@ TODO
 
 - Advanced binding demos
 
-- Splitting sources and moving to library
+- Splitting sources (done) and moving to library
 
 - Fix comments in demo
 
