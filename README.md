@@ -9,7 +9,7 @@ makes it much faster to prototype the end case scenario.
 IMPLEMENTATION STAGES
 
 - Stage 1 (getting basic databaingding in order)
-- Stage 2 (move to library, so feedback on public api is possible)
+- Stage 2 (split files/move to library, so feedback on public api is possible)
 - Stage 3 (add advanced features)
 - Stage 4 (rewrite final product in C if I don't decide to stay in Vala )
 
