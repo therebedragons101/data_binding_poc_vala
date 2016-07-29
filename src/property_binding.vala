@@ -16,7 +16,9 @@ namespace G
 		REVERSE_DIRECTION,
 		// specifies all binding is done externally and Binding will just be
 		// used trough update_from_source and update_from_target
-		MANUAL_UPDATE,
+		MANUAL_EVENTS_FROM_SOURCE, //TODO handling
+		MANUAL_EVENTS_FROM_TARGET, //TODO handling
+		MANUAL_UPDATE = MANUAL_EVENTS_FROM_SOURCE | MANUAL_EVENTS_FROM_TARGET,
 		// specifies active status and is update by freeze/unfreeze
 		// Binding created with this flag must call unfreeze manually
 		//
@@ -45,7 +47,9 @@ namespace G
 		// when this is not wanted like for example when you scroll over list
 		// of objects, spaming gui updates is not really something useful unless
 		// hogging cpu is desired action
-		FLOOD_DETECTION,
+		SOURCE_UPDATE_FLOOD_DETECTION, //TODO handling
+		TARGET_UPDATE_FLOOD_DETECTION, //TODO handling
+		FLOOD_DETECTION = SOURCE_UPDATE_FLOOD_DETECTION | TARGET_UPDATE_FLOOD_DETECTION,
 		// much like flood detection this provides static delay to data transfer
 		// if another event occurs during delay, delay is prolonged for another
 		// delay_interval. example usecase is binding search controls where you
